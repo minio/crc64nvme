@@ -20,6 +20,13 @@ var crc64Table = crc64.MakeTable(NVME)
 
 func TestChecksum(t *testing.T) {
 	if hasAsm {
+		if hasAsm512 {
+			testChecksum(t, "asm512-")
+			hasAsm512 = false
+			defer func() {
+				hasAsm512 = true
+			}()
+		}
 		testChecksum(t, "asm-")
 		hasAsm = false
 		testChecksum(t, "")
@@ -30,7 +37,7 @@ func TestChecksum(t *testing.T) {
 }
 
 func testChecksum(t *testing.T, asm string) {
-	sizes := []int{0, 1, 3, 7, 8, 9, 15, 17, 127, 128, 129, 255, 256, 257, 1e3, 1e4, 1e5, 1e6}
+	sizes := []int{0, 1, 3, 7, 8, 9, 15, 17, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1e3, 1e4, 1e5, 1e6}
 	for _, size := range sizes {
 		t.Run(fmt.Sprintf("%ssize=%d", asm, size), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(int64(size)))
@@ -47,6 +54,13 @@ func testChecksum(t *testing.T, asm string) {
 
 func TestHasher(t *testing.T) {
 	if hasAsm {
+		if hasAsm512 {
+			testChecksum(t, "asm512-")
+			hasAsm512 = false
+			defer func() {
+				hasAsm512 = true
+			}()
+		}
 		testHasher(t, "asm-")
 		hasAsm = false
 		testHasher(t, "")
@@ -179,6 +193,15 @@ func benchmarkParallel(b *testing.B, size int) {
 
 func BenchmarkParallel(b *testing.B) {
 	// go test -cpu=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 -bench=Parallel
+	b.Run("1KB", func(b *testing.B) {
+		benchmarkParallel(b, 1*1024)
+	})
+	b.Run("10KB", func(b *testing.B) {
+		benchmarkParallel(b, 10*1024)
+	})
+	b.Run("1M", func(b *testing.B) {
+		benchmarkParallel(b, 1*1024*1024)
+	})
 	b.Run("50M", func(b *testing.B) {
 		benchmarkParallel(b, 50*1024*1024)
 	})
