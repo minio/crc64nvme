@@ -41,12 +41,16 @@ func testChecksum(t *testing.T, asm string) {
 	for _, size := range sizes {
 		t.Run(fmt.Sprintf("%ssize=%d", asm, size), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(int64(size)))
-			data := make([]byte, size)
-			rng.Read(data)
-			ref := crc64.Checksum(data, crc64Table)
-			got := Checksum(data)
-			if got != ref {
-				t.Errorf("got 0x%x, want 0x%x", got, ref)
+			for align := range 16 {
+				t.Run(fmt.Sprintf("align=%d", align), func(t *testing.T) {
+					data := make([]byte, size+align)[align:]
+					rng.Read(data)
+					ref := crc64.Checksum(data, crc64Table)
+					got := Checksum(data)
+					if got != ref {
+						t.Errorf("got 0x%x, want 0x%x", got, ref)
+					}
+				})
 			}
 		})
 	}
@@ -107,43 +111,40 @@ func TestLoopAlignment(t *testing.T) {
 	}
 }
 
+func setAsm(asm, asm512 bool) (reset func()) {
+	oldAsm := hasAsm
+	oldAsm512 := hasAsm512
+	hasAsm = asm
+	hasAsm512 = asm512
+	return func() {
+		hasAsm = oldAsm
+		hasAsm512 = oldAsm512
+	}
+}
+
 func BenchmarkCrc64(b *testing.B) {
-	b.Run("64MB", func(b *testing.B) {
-		bench(b, New(), 64<<20)
-	})
-	b.Run("stdlib-64MB", func(b *testing.B) {
-		bench(b, crc64.New(crc64Table), 64<<20)
-	})
-	b.Run("4MB", func(b *testing.B) {
-		bench(b, New(), 4<<20)
-	})
-	b.Run("stdlib-4MB", func(b *testing.B) {
-		bench(b, crc64.New(crc64Table), 4<<20)
-	})
-	b.Run("1MB", func(b *testing.B) {
-		bench(b, New(), 1<<20)
-	})
-	b.Run("stdlib-1MB", func(b *testing.B) {
-		bench(b, crc64.New(crc64Table), 1<<20)
-	})
-	b.Run("64KB", func(b *testing.B) {
-		bench(b, New(), 64<<10)
-	})
-	b.Run("stdlib-64KB", func(b *testing.B) {
-		bench(b, crc64.New(crc64Table), 64<<10)
-	})
-	b.Run("4KB", func(b *testing.B) {
-		bench(b, New(), 4<<10)
-	})
-	b.Run("stdlib-4KB", func(b *testing.B) {
-		bench(b, crc64.New(crc64Table), 4<<10)
-	})
-	b.Run("1KB", func(b *testing.B) {
-		bench(b, New(), 1<<10)
-	})
-	b.Run("stdlib-1KB", func(b *testing.B) {
-		bench(b, crc64.New(crc64Table), 1<<10)
-	})
+	for _, sz := range []int64{64 << 20, 4 << 20, 1 << 20, 64 << 10, 4 << 10, 1 << 10, 128, 10} {
+		if hasAsm512 {
+			b.Run(fmt.Sprint(sz, "-asm512"), func(b *testing.B) {
+				defer setAsm(true, true)()
+				bench(b, New(), sz)
+			})
+		}
+		if hasAsm {
+			b.Run(fmt.Sprint(sz, "-asm"), func(b *testing.B) {
+				defer setAsm(true, false)()
+				bench(b, New(), sz)
+			})
+		}
+		b.Run(fmt.Sprint(sz, "-go"), func(b *testing.B) {
+			defer setAsm(false, false)()
+			bench(b, New(), sz)
+		})
+		b.Run(fmt.Sprint(sz, "-stdlib"), func(b *testing.B) {
+			bench(b, crc64.New(crc64Table), sz)
+		})
+	}
+
 }
 
 func bench(b *testing.B, h hash.Hash64, size int64) {
