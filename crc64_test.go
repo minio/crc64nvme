@@ -37,7 +37,8 @@ func TestChecksum(t *testing.T) {
 }
 
 func testChecksum(t *testing.T, asm string) {
-	sizes := []int{0, 1, 3, 7, 8, 9, 15, 17, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1e3, 1e4, 1e5, 1e6}
+	sizes := []int{0, 1, 3, 7, 8, 9, 15, 17, 127, 128, 129, 255, 256, 257, 511, 512, 513, 1e3, 1e4, 1e5, 1e6,
+		maxAsmSize - 1, maxAsmSize, maxAsmSize + 1, maxAsmSize + 1023, maxAsmSize + 1024, 3*maxAsmSize + 129}
 	for _, size := range sizes {
 		t.Run(fmt.Sprintf("%ssize=%d", asm, size), func(t *testing.T) {
 			rng := rand.New(rand.NewSource(int64(size)))

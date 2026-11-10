@@ -116,6 +116,11 @@ func (d *digest) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+// maxAsmSize is the most bytes passed to the assembly in one call. The assembly
+// can't be preempted, so a call on a large buffer delays stop-the-world (and so
+// every other goroutine) until it returns.
+const maxAsmSize = 64 << 10
+
 func update(crc uint64, p []byte) uint64 {
 	if hasAsm && len(p) > 127 {
 		ptr := unsafe.Pointer(&p[0])
@@ -124,14 +129,12 @@ func update(crc uint64, p []byte) uint64 {
 			crc = update(crc, p[:align])
 			p = p[align:]
 		}
-		runs := len(p) / 128
-		if hasAsm512 && runs >= 8 {
-			// Use 512-bit wide instructions for >= 1KB.
-			crc = updateAsm512(crc, p[:128*runs])
-		} else if runs > 0 {
-			crc = updateAsm(crc, p[:128*runs])
+		for len(p) >= 128 {
+			n := min(len(p), maxAsmSize) &^ 127
+			crc = updateAsmChunk(crc, p[:n])
+			p = p[n:]
 		}
-		return update(crc, p[128*runs:])
+		return update(crc, p)
 	}
 
 	buildSlicing8TablesOnce()
@@ -158,6 +161,19 @@ func update(crc uint64, p []byte) uint64 {
 		crc = nvmeTable[byte(crc)^v] ^ (crc >> 8)
 	}
 	return ^crc
+}
+
+// updateAsmChunk updates crc with p, whose length is a multiple of 128 and at
+// most maxAsmSize. Calling it is a point where the goroutine can be preempted,
+// which the assembly itself is not, so it must not be inlined.
+//
+//go:noinline
+func updateAsmChunk(crc uint64, p []byte) uint64 {
+	if hasAsm512 && len(p) >= 1024 {
+		// Use 512-bit wide instructions for >= 1KB.
+		return updateAsm512(crc, p)
+	}
+	return updateAsm(crc, p)
 }
 
 // Update returns the result of adding the bytes in p to the crc.
